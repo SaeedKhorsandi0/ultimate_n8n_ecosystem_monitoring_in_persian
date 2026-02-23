@@ -1,0 +1,1463 @@
+{
+  "name": "Ultimate N8N Monitoring",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "\n\n// $now خودش یه Luxon DateTime هست، مستقیم ازش استفاده می‌کنیم\nconst thirtyMinutesAgo = $now.minus({ hours: 1 });\n\n// دقیقاً همون فرمتی که YouTube API می‌خواد و $now نشون می‌ده\nconst publishedAfter = thirtyMinutesAgo.toISO();\n\nreturn [\n  {\n    json: {\n      publishedAfter: publishedAfter\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        -1712
+      ],
+      "id": "9f08dafd-af72-4be8-bae4-d02a1214dbb3",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "=",
+        "file": "={{ $('Edit Fields').item.json.snippet.thumbnails.medium.url }}",
+        "additionalFields": {
+          "caption": "=📍 *{{ $('Edit Fields').item.json.snippet.title }}*\n💬 {{ $json.text }}\n\n📣 چنل: {{ $('Edit Fields').item.json.snippet.channelTitle }}\n🔗 [لینک ویدئو](https://www.youtube.com/watch?v={{ $('Edit Fields').item.json.id.videoId }})\n👤 [لینک چنل](https://www.youtube.com/channel/{{ $('Edit Fields').item.json.snippet.channelId }})",
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1504,
+        -1712
+      ],
+      "id": "783fc0ef-590d-482f-8afd-ea142edc007f",
+      "name": "Send a photo message1",
+      "webhookId": "03b392ac-7687-4343-8c44-782d580bd449",
+      "credentials": {
+        "telegramApi": {
+          "id": "qHtFcxv1BACunSeG",
+          "name": "Telegram account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/*\n * n8n Code Node: Split YouTube Search Results\n *\n * این کد ورودی نود HTTP Request را می‌گیرد و آرایه 'items' (نتایج جستجو)\n * را به آیتم‌های جداگانه در n8n تبدیل می‌کند.\n *\n * ساختار ورودی مورد انتظار (بر اساس نمونه شما):\n * items = [\n * {\n * json: [\n * {\n * \"kind\": \"youtube#searchListResponse\",\n * \"items\": [\n * { \"id\": ..., \"snippet\": ... },\n * { \"id\": ..., \"snippet\": ... },\n * ...\n * ]\n * }\n * ]\n * }\n * ]\n */\n\nconst newItems = [];\n\n// پیمایش تمام آیتم‌های ورودی n8n\n// (معمولاً نود HTTP Request فقط یک آیتم خروجی می‌دهد)\nfor (const item of items) {\n  try {\n    // 1. داده‌های JSON را از ورودی بگیرید\n    const inputJson = item.json;\n    let youtubeResponse;\n\n    // 2. بررسی کنید که آیا 'inputJson' آرایه است یا آبجکت\n    // این کد حالا هر دو حالت را مدیریت می‌کند:\n    // حالت ۱: item.json یک آرایه است (مثل نمونه شما) -> [ { ... } ]\n    // حالت ۲: item.json خود آبجکت است (بسیار رایج) -> { ... }\n    if (Array.isArray(inputJson) && inputJson.length > 0) {\n      // اگر آرایه بود (مثل نمونه‌ای که فرستادید)، عنصر اول را بردارید\n      youtubeResponse = inputJson[0];\n    } else if (typeof inputJson === 'object' && inputJson !== null && !Array.isArray(inputJson)) {\n      // اگر یک آبجکت بود (که این هم رایج است)، مستقیماً از آن استفاده کنید\n      youtubeResponse = inputJson;\n    } else {\n      // اگر ساختار ناشناخته بود، لاگ بزن و برو\n      console.warn(\"Input JSON is not in a recognized format (array or object):\", inputJson);\n      continue; // برو سراغ آیتم بعدی n8n\n    }\n\n\n    // 3. حالا آرایه 'items' را از داخل آن آبجکت استخراج می‌کنیم.\n    const videoList = youtubeResponse.items;\n\n    // 4. بررسی می‌کنیم که 'videoList' واقعاً یک آرایه باشد\n    if (Array.isArray(videoList)) {\n      \n      // 5. به ازای هر ویدئو/کانال در 'videoList'، یک آیتم جدید n8n می‌سازیم\n      for (const video of videoList) {\n        \n        // 6. آیتم جدید را به لیست خروجی اضافه می‌کنیم.\n        // آبجکت کامل ویدئو در 'json' آیتم جدید قرار می‌گیرد.\n        newItems.push({\n          json: video\n        });\n      }\n    } else {\n      // اگر ساختار داده مورد انتظار نبود، یک هشدار در لاگ n8n ثبت کن\n      console.warn(\"Could not find 'items' array in youtubeResponse\", youtubeResponse);\n    }\n  } catch (error) {\n    // در صورت بروز خطا (مثلاً اگر 'item.json[0]' وجود نداشته باشد)\n    // خطا را در لاگ n8n ثبت کن\n    console.error(\"Error processing item. Make sure input data matches expected structure.\", error.message, item);\n  }\n}\n\n// 6. لیست جدید آیتم‌ها را برمی‌گردانیم.\n// n8n به طور خودکار این آرایه را به آیتم‌های جداگانه برای نود بعدی \"split\" می‌کند.\nreturn newItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        -1712
+      ],
+      "id": "2bdb5d82-e3c2-4924-a1f5-161324b34dd0",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "snippet"
+            },
+            {
+              "name": "q",
+              "value": "n8n | \"AI Agent\""
+            },
+            {
+              "name": "type",
+              "value": "video"
+            },
+            {
+              "name": "key"
+            },
+            {
+              "name": "maxResults",
+              "value": "30"
+            },
+            {
+              "name": "publishedAfter",
+              "value": "={{ $('Code in JavaScript1').item.json.publishedAfter }}"
+            },
+            {
+              "name": "order",
+              "value": "viewCount"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        32,
+        -1712
+      ],
+      "id": "c618ad0c-19c7-4c77-af3f-b68b978256bc",
+      "name": "q4",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "maxItems": 8
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        704,
+        -1712
+      ],
+      "id": "3fd03c55-5436-4c96-8660-175b723c9b1d",
+      "name": "Limit4"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 6
+            }
+          ]
+        },
+        "feedUrl": "https://blog.n8n.io/feed/"
+      },
+      "type": "n8n-nodes-base.rssFeedReadTrigger",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        -2096
+      ],
+      "id": "529959fd-a16a-4833-8f1b-c28328e3fb0b",
+      "name": "RSS Feed Trigger"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.link }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -160,
+        -2096
+      ],
+      "id": "0bf8946a-1846-4354-98de-181238033ee1",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "title",
+              "cssSelector": "h1.post-hero-title"
+            },
+            {
+              "key": "image",
+              "cssSelector": "meta[property='og:image']",
+              "returnValue": "attribute",
+              "attribute": "content"
+            },
+            {
+              "key": "description",
+              "cssSelector": ".post-content > p:first-of-type"
+            },
+            {
+              "key": "link",
+              "cssSelector": "meta[property='og:url']",
+              "returnValue": "attribute",
+              "attribute": "content"
+            },
+            {
+              "key": "publishedAt",
+              "cssSelector": "time[datetime]",
+              "returnValue": "attribute",
+              "attribute": "datetime"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        64,
+        -2096
+      ],
+      "id": "f96b1a5b-3741-4470-8a99-980baa040c43",
+      "name": "HTML"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "=",
+        "file": "={{ $('HTML').item.json.image }}",
+        "additionalFields": {
+          "caption": "=📌 *{{ $json.translatedTitle }}*\n\n🔖 {{ $json.translatedDescription }}\n\n📣 بلاگ رسمی n8n\n📅 {{ $('Code in JavaScript5').item.json.publishedAt }}\n🔗 [لینک مقاله]({{ $('RSS Feed Trigger').item.json.link }})",
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1088,
+        -2096
+      ],
+      "id": "975dc313-78e0-4bbf-995f-85224b9bec01",
+      "name": "Send a photo message",
+      "webhookId": "49498eaa-156f-4562-bf73-51058f80f103",
+      "credentials": {
+        "telegramApi": {
+          "id": "qHtFcxv1BACunSeG",
+          "name": "Telegram account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/n8n/.rss",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "name": "Reddit RSS with UA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        48,
+        -1408
+      ],
+      "id": "1d7bf408-d8e6-4730-a659-3b0ba4b668c6"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "XML to JSON",
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        272,
+        -1408
+      ],
+      "id": "0c9657c7-f251-473a-8fe7-8839173cdef2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "88cff8f9-b85a-4908-a93d-5fdcd67eee0c",
+              "leftValue": "={{ $('Code in JavaScript4').item.json.published }}",
+              "rightValue": "={{ $('Code in JavaScript').item.json.publishedAfter }}",
+              "operator": {
+                "type": "dateTime",
+                "operation": "afterOrEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        -1408
+      ],
+      "id": "e5e83b91-2e40-4425-b185-da692ed60dae",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "const entries = items[0].json.feed.entry || [];\n\nreturn entries.map(entry => {\n  const published = new Date(entry.published || entry.updated);\n  const link = typeof entry.link.href === 'object' ? entry.link.href : entry.link.href['#text'] || entry.link.href;\n  \n  return {\n    json: {\n      title: entry.title,\n      link: link,\n      id: entry.id,                    // t3_1p5d0to ← این منحصر به فرده\n      author: entry.author.name.replace('/u/', ''),\n      published: published.toISOString(),\n      publishedTimestamp: published.getTime(),\n      content: entry.content._ || ''\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        -1408
+      ],
+      "id": "2341978f-0d3d-4cb8-9fd4-ee6051a4c446",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// تولید دقیق publishedAfter = 30 دقیقه قبل با فرمت RFC 3339 کامل (مثل $now)\n\n// $now خودش یه Luxon DateTime هست، مستقیم ازش استفاده می‌کنیم\nconst thirtyMinutesAgo = $now.minus({ hour: 1 });\n\n// دقیقاً همون فرمتی که YouTube API می‌خواد و $now نشون می‌ده\nconst publishedAfter = thirtyMinutesAgo.toISO();\n\nreturn [\n  {\n    json: {\n      publishedAfter: publishedAfter\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        -1408
+      ],
+      "id": "338b9fd1-f731-43bf-b979-feb355c8c44a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -400,
+        -1408
+      ],
+      "id": "9bf292ad-1435-44b8-ba77-064a1e5c2a2e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        -1712
+      ],
+      "id": "2159f578-2ed1-4676-a4ac-1e97f6f4d40b",
+      "name": "Schedule Trigger1"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "dataPropertyName": "content",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "Post",
+              "cssSelector": "div.md"
+            }
+          ]
+        },
+        "options": {
+          "cleanUpText": false
+        }
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        944,
+        -1408
+      ],
+      "id": "7183c307-d665-4a47-a7e0-612964c54411",
+      "name": "HTML4"
+    },
+    {
+      "parameters": {
+        "chatId": "=",
+        "text": "=📌 *{{ $json.translatedTitle }}*\n\n🔖 {{ $json.translatedPost }}\n\n📣 {{ $('Edit Fields1').item.json.Writer }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "خوندن پست در ردیت",
+                    "additionalFields": {
+                      "url": "={{ $('Edit Fields1').item.json[\"Post Link\"] }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1968,
+        -1408
+      ],
+      "id": "094fb439-e90c-4fcf-aab8-da2135a97da0",
+      "name": "Send a text message2",
+      "webhookId": "eba9b2ed-4793-4d19-b235-5bcfa21b6b59",
+      "credentials": {
+        "telegramApi": {
+          "id": "qHtFcxv1BACunSeG",
+          "name": "Telegram account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/AI_Agents/.rss",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "name": "Reddit RSS with UA1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        32,
+        -1088
+      ],
+      "id": "30a63464-787e-4e2f-847c-195d5a814f96"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "XML to JSON1",
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        256,
+        -1088
+      ],
+      "id": "893b9ec6-7627-4b06-827b-54706e8664c2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "88cff8f9-b85a-4908-a93d-5fdcd67eee0c",
+              "leftValue": "={{ $('Code in JavaScript9').item.json.published }}",
+              "rightValue": "={{ $('Code in JavaScript11').item.json.publishedAfter }}",
+              "operator": {
+                "type": "dateTime",
+                "operation": "afterOrEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        -1088
+      ],
+      "id": "b9503e5d-d67b-451c-aa0b-bd385219537a",
+      "name": "Filter1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const entries = items[0].json.feed.entry || [];\n\nreturn entries.map(entry => {\n  const published = new Date(entry.published || entry.updated);\n  const link = typeof entry.link.href === 'object' ? entry.link.href : entry.link.href['#text'] || entry.link.href;\n  \n  return {\n    json: {\n      title: entry.title,\n      link: link,\n      id: entry.id,                    // t3_1p5d0to ← این منحصر به فرده\n      author: entry.author.name.replace('/u/', ''),\n      published: published.toISOString(),\n      publishedTimestamp: published.getTime(),\n      content: entry.content._ || ''\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        -1088
+      ],
+      "id": "6497f3c3-4f25-4ed8-9b03-29556a690e04",
+      "name": "Code in JavaScript9"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "dataPropertyName": "content",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "Post",
+              "cssSelector": "div.md"
+            }
+          ]
+        },
+        "options": {
+          "cleanUpText": false
+        }
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        928,
+        -1088
+      ],
+      "id": "53dcb1b6-5fb2-48c9-9825-63fa6b0cc6bc",
+      "name": "HTML5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// تولید دقیق publishedAfter = 30 دقیقه قبل با فرمت RFC 3339 کامل (مثل $now)\n\n// $now خودش یه Luxon DateTime هست، مستقیم ازش استفاده می‌کنیم\nconst thirtyMinutesAgo = $now.minus({ hour: 1 });\n\n// دقیقاً همون فرمتی که YouTube API می‌خواد و $now نشون می‌ده\nconst publishedAfter = thirtyMinutesAgo.toISO();\n\nreturn [\n  {\n    json: {\n      publishedAfter: publishedAfter\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        -1088
+      ],
+      "id": "3682a6c6-feb3-4e53-ac25-2f0baa1866f8",
+      "name": "Code in JavaScript11"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggerAtMinute": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        -1088
+      ],
+      "id": "e6b3ed1c-6101-443e-8953-5caf31efecb8",
+      "name": "Schedule Trigger2"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        480,
+        -1712
+      ],
+      "id": "7270b0b5-5e6f-470e-b83e-247d2962bcb0",
+      "name": "Remove Duplicates"
+    },
+    {
+      "parameters": {
+        "content": "## n8n official blog Monitoring ",
+        "height": 336,
+        "width": 1792,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -480,
+        -2176
+      ],
+      "typeVersion": 1,
+      "id": "71357749-1141-4238-ba2e-86bbcce6136d",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## reddit Monitoring Communities: n8n, Ai Agents, Digital Marketing",
+        "height": 704,
+        "width": 2656,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -480,
+        -1488
+      ],
+      "typeVersion": 1,
+      "id": "7974dc0a-8edf-499c-9eff-df2a9e36e08e",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Youtube Monitoring queries: n8n (en and fa), Ai Agent (en).",
+        "height": 320,
+        "width": 2208,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -480,
+        -1824
+      ],
+      "typeVersion": 1,
+      "id": "6d7c8d16-028d-49a6-ae44-b86cceadde2d",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Title: {{ $json.title }}\nDescription: {{ $json.description }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "AIMessagePromptTemplate",
+              "message": "=You are an expert technical translator specializing in AI, Automation, and the n8n ecosystem. Your task is to translate n8n official blog posts from English to Persian.\n\nTitle: {{ $json.title }}\nDescription: {{ $json.description }}\n\n### Rules for Translation:\n1. **Tone**: Professional, fluent, and modern. Avoid formal/bookish Persian; use a tone suitable for tech-savvy specialists.\n2. **Technical Terms**: DO NOT translate technical keywords. Keep them in English. This includes: n8n, AI Agent, Chat Hub, Workflow, Automation, Trigger, Node, Interface, Task, Low-code, and credentials.\n3. **Structure**: Maintain the original paragraph structure and formatting.\n4. **Clarity**: Ensure the translated text is easy to read and logically coherent. If a sentence is too complex, break it down while keeping the original meaning.\n\n"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.8,
+      "position": [
+        512,
+        -2096
+      ],
+      "id": "782b9ef2-ec48-42a1-b7bb-642567912d1b",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "moonshotai/kimi-k2-instruct-0905",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        448,
+        -1952
+      ],
+      "id": "94015fd5-26fe-487f-b2b2-cc5059804c25",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "23JHOHjJraDTlaxE",
+          "name": "Groq account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// فرض بر این است که ورودی از نود AI به نام 'text' وارد می‌شود\nconst input = $input.first().json.text;\n\n// استفاده از Regex برای استخراج محتوا بین تگ‌های تایتل و دسکریپشن\nconst titleMatch = input.match(/Title:\\s*(.*)/i);\nconst descriptionMatch = input.match(/Description:\\s*([\\s\\S]*)/i);\n\nreturn [\n  {\n    json: {\n      translatedTitle: titleMatch ? titleMatch[1].trim() : \"بدون عنوان\",\n      translatedDescription: descriptionMatch ? descriptionMatch[1].trim() : \"بدون توضیحات\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -2096
+      ],
+      "id": "09358c67-27ac-476e-946c-6dfa41e2315b",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// دریافت داده ورودی\nconst items = $input.all();\n\n// تابع تبدیل تاریخ میلادی به شمسی\nfunction gregorianToJalali(gYear, gMonth, gDay) {\n  const gDaysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];\n  const jDaysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];\n  \n  let gy = gYear - 1600;\n  let gm = gMonth - 1;\n  let gd = gDay - 1;\n  \n  let gDayNo = 365 * gy + Math.floor((gy + 3) / 4) - Math.floor((gy + 99) / 100) + Math.floor((gy + 399) / 400);\n  \n  for (let i = 0; i < gm; ++i) {\n    gDayNo += gDaysInMonth[i];\n  }\n  \n  if (gm > 1 && ((gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0))) {\n    gDayNo++;\n  }\n  \n  gDayNo += gd;\n  \n  let jDayNo = gDayNo - 79;\n  let jNp = Math.floor(jDayNo / 12053);\n  jDayNo %= 12053;\n  \n  let jy = 979 + 33 * jNp + 4 * Math.floor(jDayNo / 1461);\n  jDayNo %= 1461;\n  \n  if (jDayNo >= 366) {\n    jy += Math.floor((jDayNo - 1) / 365);\n    jDayNo = (jDayNo - 1) % 365;\n  }\n  \n  let jm = 0;\n  for (let i = 0; i < 11 && jDayNo >= jDaysInMonth[i]; ++i) {\n    jDayNo -= jDaysInMonth[i];\n    jm++;\n  }\n  \n  let jd = jDayNo + 1;\n  \n  return { year: jy, month: jm + 1, day: jd };\n}\n\n// نام ماه‌های شمسی\nconst persianMonths = [\n  'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',\n  'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'\n];\n\n// پردازش هر آیتم\nconst result = items.map(item => {\n  const data = item.json;\n  \n  // تبدیل تاریخ publishedAt\n  if (data.publishedAt) {\n    const date = new Date(data.publishedAt);\n    const jalali = gregorianToJalali(\n      date.getFullYear(),\n      date.getMonth() + 1,\n      date.getDate()\n    );\n    \n    // فرمت: \"روز ماه\" (مثلاً \"8 بهمن\")\n    data.publishedAt = `${jalali.day} ${persianMonths[jalali.month - 1]}`;\n  }\n  \n  return data;\n});\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        -2096
+      ],
+      "id": "ad6f5d9d-4964-4f4e-93b3-91c70c3fa707",
+      "name": "Code in JavaScript5"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Translate this YouTube title to Persian: {{ $json.snippet.title }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "AIMessagePromptTemplate",
+              "message": "=You are an expert technical translator and content creator for YouTube. Your task is to translate YouTube video titles from English to Persian.\n\n### Rules for Translation:\n1. **Tone**: Engaging and professional. It should sound like a Persian tech YouTuber's title—concise and catchy.\n2. **Technical Terms**: DO NOT translate technical keywords. Keep them in English. This includes: n8n, AI, Agent, Automation, Workflow, GPT, API, Low-code, Python, etc.\n3. **Keep Original Meaning**: Ensure the \"hook\" of the video remains clear in Persian.\n4. **No Extra Text**: Only output the translated title without any quotes, explanations, or \"Here is the translation:\".\n\n### Output Format:\n- Directly provide the translated Persian title."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.8,
+      "position": [
+        1152,
+        -1776
+      ],
+      "id": "c1b18fc2-858f-4ffd-9f54-cfbbb0ca65d6",
+      "name": "Basic LLM Chain1"
+    },
+    {
+      "parameters": {
+        "model": "moonshotai/kimi-k2-instruct-0905",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        -1616
+      ],
+      "id": "a059cff2-2d9f-4e65-ad81-3e989f6a86a0",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "23JHOHjJraDTlaxE",
+          "name": "Groq account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e3644d40-ad7e-4ba4-b8f4-4597df49f5db",
+              "name": "snippet.thumbnails.medium.url",
+              "value": "={{ $json.snippet.thumbnails.medium.url }}",
+              "type": "string"
+            },
+            {
+              "id": "9e498e6b-cca9-495a-9a0c-1cdf9be52a71",
+              "name": "snippet.title",
+              "value": "={{ $json.snippet.title }}",
+              "type": "string"
+            },
+            {
+              "id": "37c41a71-f418-4c9e-8835-936adf95cf23",
+              "name": "id.videoId",
+              "value": "={{ $json.id.videoId }}",
+              "type": "string"
+            },
+            {
+              "id": "bd933c98-b578-42f8-b347-877ffdfa28bd",
+              "name": "snippet.channelId",
+              "value": "={{ $json.snippet.channelId }}",
+              "type": "string"
+            },
+            {
+              "id": "c0c1062f-afe7-4ba8-86e5-62d149b95570",
+              "name": "snippet.description",
+              "value": "={{ $json.snippet.description }}",
+              "type": "string"
+            },
+            {
+              "id": "b11f071e-050e-47f0-ac7b-a6e3c01ad4dd",
+              "name": "snippet.channelTitle",
+              "value": "={{ $json.snippet.channelTitle }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        928,
+        -1712
+      ],
+      "id": "0e24ff83-5781-4b6f-a4c5-b4ff4b345fe5",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d203901f-4466-49ad-b975-98b9c200ab47",
+              "name": "Title ",
+              "value": "={{ $('Filter').item.json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "ca7e38f1-d8f1-4f2e-81f2-069bcf942712",
+              "name": "Post ",
+              "value": "={{ $json.Post }}",
+              "type": "string"
+            },
+            {
+              "id": "52547aaa-3fe1-4bd2-ae8a-ae6cf3273ada",
+              "name": "=Writer",
+              "value": "={{ $('Filter').item.json.author }}",
+              "type": "string"
+            },
+            {
+              "id": "1f1c9d64-bc53-4f7f-adb3-7c065a78764a",
+              "name": "Post Link",
+              "value": "={{ $('Code in JavaScript4').item.json.link }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1168,
+        -1408
+      ],
+      "id": "ea181651-289e-4471-af4c-4c5387365c98",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d203901f-4466-49ad-b975-98b9c200ab47",
+              "name": "Title ",
+              "value": "={{ $('Filter1').item.json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "ca7e38f1-d8f1-4f2e-81f2-069bcf942712",
+              "name": "Post ",
+              "value": "={{ $json.Post }}",
+              "type": "string"
+            },
+            {
+              "id": "52547aaa-3fe1-4bd2-ae8a-ae6cf3273ada",
+              "name": "=Writer",
+              "value": "={{ $('Filter1').item.json.author }}",
+              "type": "string"
+            },
+            {
+              "id": "1f1c9d64-bc53-4f7f-adb3-7c065a78764a",
+              "name": "Post Link",
+              "value": "={{ $('Code in JavaScript9').item.json.link }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1152,
+        -1088
+      ],
+      "id": "a20556a3-a9cb-46bc-a19f-1379ebce6bad",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Please translate this Reddit post:\n\nTitle: {{ $json[\"Title \"] }}\nPost: {{ $json[\"Post \"] }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "AIMessagePromptTemplate",
+              "message": "=You are an expert technical translator and a specialist in the n8n and automation community on Reddit. Your task is to translate Reddit posts (Title and Body) from English to Persian.\n\n### Rules for Translation:\n1. **Tone**: Natural and conversational, yet professional. Reddit posts often contain urgency or personal experiences; try to reflect that in Persian without being too formal.\n2. **Technical Terms**: DO NOT translate technical keywords. Keep them in English. This includes: n8n, Node, Scraping, Leads, SerpApi, Pagination, Workflow, API, Client, Trigger, etc.\n3. **Clarity**: If the user is describing a technical bug or a specific issue, ensure the translation clearly explains the problem.\n4. **No Extra Text**: Only provide the translated Title and translated Post. Do not add \"Here is the translation\" or quotes.\n\n### Output Format:\nTitle: [Translated Title]\nPost: [Translated Post Body]"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.8,
+      "position": [
+        1392,
+        -1408
+      ],
+      "id": "55805a58-adbe-435b-8d22-a232b3c7bbe5",
+      "name": "Basic LLM Chain2"
+    },
+    {
+      "parameters": {
+        "model": "moonshotai/kimi-k2-instruct-0905",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        -1232
+      ],
+      "id": "abe97941-f442-43f6-85ca-7f272d823c20",
+      "name": "Groq Chat Model2",
+      "credentials": {
+        "groqApi": {
+          "id": "8UhdJ6tO9f8R1Qk4",
+          "name": "Groq account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// دریافت تمام آیتم‌ها\nconst items = $input.all();\n\n// پردازش هر آیتم و ساخت آرایه نتایج\nreturn items.map(item => {\n  const input = item.json.text;\n  \n  // استفاده از عبارت منظم (Regex) برای جدا کردن تایتل و بدنه پست\n  // این الگوریتم محتوای بین Title و Post را برای عنوان، و بقیه را برای پست برمی‌دارد\n  const titleMatch = input.match(/Title:\\s*([\\s\\S]*?)(?=\\nPost:|$)/i);\n  const postMatch = input.match(/Post:\\s*([\\s\\S]*)$/i);\n  \n  return {\n    json: {\n      translatedTitle: titleMatch ? titleMatch[1].trim() : \"بدون عنوان\",\n      translatedPost: postMatch ? postMatch[1].trim() : \"بدون متن\"\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        -1408
+      ],
+      "id": "bf125824-ce98-4404-bcd7-caa6ba37d5cc",
+      "name": "Code in JavaScript6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// دریافت تمام آیتم‌ها\nconst items = $input.all();\n\n// پردازش هر آیتم و ساخت آرایه نتایج\nreturn items.map(item => {\n  const input = item.json.text;\n  \n  // استفاده از عبارت منظم (Regex) برای جدا کردن تایتل و بدنه پست\n  // این الگوریتم محتوای بین Title و Post را برای عنوان، و بقیه را برای پست برمی‌دارد\n  const titleMatch = input.match(/Title:\\s*([\\s\\S]*?)(?=\\nPost:|$)/i);\n  const postMatch = input.match(/Post:\\s*([\\s\\S]*)$/i);\n  \n  return {\n    json: {\n      translatedTitle: titleMatch ? titleMatch[1].trim() : \"بدون عنوان\",\n      translatedPost: postMatch ? postMatch[1].trim() : \"بدون متن\"\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        -1088
+      ],
+      "id": "50aa8222-39f9-4579-b6bf-95d4255441b0",
+      "name": "Code in JavaScript7"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Please translate this Reddit post:\n\nTitle: {{ $json[\"Title \"] }}\nPost: {{ $json[\"Post \"] }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "AIMessagePromptTemplate",
+              "message": "=You are an expert technical translator and a specialist in the n8n and automation community on Reddit. Your task is to translate Reddit posts (Title and Body) from English to Persian.\n\n### Rules for Translation:\n1. **Tone**: Natural and conversational, yet professional. Reddit posts often contain urgency or personal experiences; try to reflect that in Persian without being too formal.\n2. **Technical Terms**: DO NOT translate technical keywords. Keep them in English. This includes: n8n, Node, Scraping, Leads, SerpApi, Pagination, Workflow, API, Client, Trigger, etc.\n3. **Clarity**: If the user is describing a technical bug or a specific issue, ensure the translation clearly explains the problem.\n4. **No Extra Text**: Only provide the translated Title and translated Post. Do not add \"Here is the translation\" or quotes.\n\n### Output Format:\nTitle: [Translated Title]\nPost: [Translated Post Body]"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.8,
+      "position": [
+        1376,
+        -1088
+      ],
+      "id": "3c9902b7-40ba-404a-b846-f26ce346965f",
+      "name": "Basic LLM Chain3"
+    },
+    {
+      "parameters": {
+        "model": "moonshotai/kimi-k2-instruct-0905",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        -880
+      ],
+      "id": "d508ab26-8b18-4da5-9ad5-fa14a9814a0c",
+      "name": "Groq Chat Model3",
+      "credentials": {
+        "groqApi": {
+          "id": "8UhdJ6tO9f8R1Qk4",
+          "name": "Groq account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "=",
+        "text": "=📌 *{{ $json.translatedTitle }}*\n\n🔖 {{ $json.translatedPost }}\n\n📣 {{ $('Edit Fields2').item.json.Writer }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "خوندن پست در ردیت",
+                    "additionalFields": {
+                      "url": "={{ $('Edit Fields2').item.json[\"Post Link\"] }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1952,
+        -1088
+      ],
+      "id": "767e1dfc-9750-4997-a4da-d8046cf386e2",
+      "name": "Send a text message",
+      "webhookId": "27ae514e-d75f-49a2-a16b-00f1a48cfa81",
+      "credentials": {
+        "telegramApi": {
+          "id": "qHtFcxv1BACunSeG",
+          "name": "Telegram account 8"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Ultimate N8N Monitoring in Persian\nStay updated with the latest n8n news, Reddit discussions, and YouTube tutorials, all translated to Persian!\n\n**How to Setup:**\n1. input your bot credential and your channel/pv telegram id \n2. input your Groq's Api (if you wanna use another Ai api service change the model in llm chain) \n3. input your YouTube API key in the HTTP Request node to fetch video updates\n4. Enjoy being updated on the n8n ecosystem!\n\n**Developer: Saeed Khorsandi**\n[Linkedin](https://www.linkedin.com/in/saeedkhorsandi0) | [Telegram](https://t.me/saeedkhorsandi5)",
+        "height": 336,
+        "width": 464,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1040,
+        -2000
+      ],
+      "typeVersion": 1,
+      "id": "6158c19e-9016-42da-91d1-6376a4bf06b9",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "q4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "q4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit4": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Feed Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reddit RSS with UA": {
+      "main": [
+        [
+          {
+            "node": "XML to JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "XML to JSON": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Reddit RSS with UA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "HTML4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML4": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reddit RSS with UA1": {
+      "main": [
+        [
+          {
+            "node": "XML to JSON1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "XML to JSON1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter1": {
+      "main": [
+        [
+          {
+            "node": "HTML5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript9": {
+      "main": [
+        [
+          {
+            "node": "Filter1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML5": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript11",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript11": {
+      "main": [
+        [
+          {
+            "node": "Reddit RSS with UA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Limit4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Send a photo message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript5": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain1": {
+      "main": [
+        [
+          {
+            "node": "Send a photo message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript6": {
+      "main": [
+        [
+          {
+            "node": "Send a text message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain3",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript7": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "f9859bf5-7235-4175-a8a0-1388e2ea9a1b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ca79995c80014e28b19df5474a7bbd990ef38393d7d5543052c576b0912e4304"
+  },
+  "id": "AlsmFPG3mDkGLt8x",
+  "tags": []
+}
