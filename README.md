@@ -15,6 +15,8 @@
 * **تبدیل تاریخ به شمسی:** تبدیل خودکار زمان انتشار پست‌ها به فرمت فارسی برای خوانایی بهتر.
 * **اطلاع‌رسانی تلگرامی:** ارسال خروجی نهایی به همراه تصویر و لینک مستقیم به بات تلگرام.
 
+<img src="https://github.com/SaeedKhorsandi0/ultimate_n8n_ecosystem_monitoring_in_persian/blob/main/screenshots/Screenshot%202026-02-24%20at%2015-33-10%20%E2%96%B6%EF%B8%8F%20Ultimate%20N8N%20Monitoring%20-%20n8n.png">
+
 ## 📸 پیش‌نمایش خروجی
 
 <div align="center">
